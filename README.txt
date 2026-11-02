@@ -5,8 +5,8 @@ language was speed incarnate.
 
 If you learned to program on an Apple II, Atari 400/800, a Commodore 64, or
 one of the countless other 6502-based personal computers Back In The Day (TM),
-this might be for you. If nothing else, running the 6502 emulator might quell
-the voices in your head screaming, "Yeah, I could probably breadboard
+this might be for you. If nothing else, running the 6502 emulator will help
+quell the voices in your head screaming, "Yeah, I could probably breadboard
 something like that."
 
 What you'll find here is some documentation for setting up tools on a 64-bit
