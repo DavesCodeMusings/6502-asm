@@ -1,0 +1,25 @@
+;
+; demo 
+;
+
+        .setcpu "65C02"
+
+        .segment "OS"
+
+reset:
+        ldx     #$ff            ;
+        txs                     ;
+loop:   jmp     loop            ;
+
+
+nmi:    jmp     nmi
+
+
+irq_brk: 
+        jmp     irq_brk         ;
+
+        .segment "VECTORS"
+
+        .word   nmi             ; NMI
+        .word   reset           ; RESET
+        .word   irq_brk         ; IRQ/BRK
