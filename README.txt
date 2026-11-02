@@ -1,0 +1,17 @@
+=== 6502 ASM ===
+
+A side quest to relive the Good Old Days (TM), when 8-bit was king and assembly
+language was speed incarnate.
+
+If you learned to program on an Apple II, Atari 400/800, a Commodore 64, or
+one of the countless other 6502-based personal computers Back In The Day (TM),
+this might be for you. If nothing else, running the 6502 emulator might quell
+the voices in your head screaming, "Yeah, I could probably breadboard
+something like that."
+
+What you'll find here is some documentation for setting up tools on a 64-bit
+Windows 11 system to build and run 65C02 assembly. See README-TOOLS.txt.
+
+At some point I may actually create some ROM images and make them available
+here. But until then, I hope this will save you some time getting things set
+up for building.
