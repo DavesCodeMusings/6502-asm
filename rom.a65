@@ -1,4 +1,30 @@
 ;
+; ROM demo 
+;
+
+        .setcpu "65C02"         ; This makes more instructions available.
+
+        .segment "SYSTEM"
+reset:  sei                     ; This code is for both power-up and hard reset.
+        cld                     ; Ensure binary, not binary coded decimal (BCD).
+        ldx     #$FF            ; $FF represents the top of the stack.
+        txs                     ; Transfer it to the stack pointer.
+        cli                     ; Allow interrupts once again.
+
+loop:   jmp     loop            ; Do nothing for now
+
+
+nmi:    jmp     nmi
+
+
+irq_brk: 
+        jmp     irq_brk         ;
+
+        .segment "VECTORS"      ; 6502 pointers at the top of the address range.
+        .word   nmi             ; NMI
+        .word   reset           ; RESET
+        .word   irq_brk         ; IRQ/BRK
+;
 ; demo 
 ;
 
