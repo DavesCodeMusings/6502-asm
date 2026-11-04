@@ -1,7 +1,13 @@
 === 6502 ASM ===
 
-A side quest to relive the Good Old Days (TM), when 8-bit was king and assembly
-language was speed incarnate.
+TLDR;
+If you know how to program in 6502 assembly, edit rom.a65 to your liking,
+then run build.bat to assemble and link, then run.bat to launch the 6502
+emulator with your ROM image.
+
+Why?
+This project is a side quest to relive the Good Old Days (TM), when 8-bit
+was king and assembly language was speed incarnate.
 
 If you learned to program on an Apple II, Atari 400/800, a Commodore 64, or
 one of the countless other 6502-based personal computers Back In The Day (TM),
