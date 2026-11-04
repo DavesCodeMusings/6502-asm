@@ -1,7 +1,7 @@
 === 6502 ASM ===
 
 TLDR;
-If you know how to program in 6502 assembly, edit rom.a65 to your liking,
+If you're itching to program in 6502 assembly, edit rom.a65 to your liking,
 then run build.bat to assemble and link, then run.bat to launch the 6502
 emulator with your ROM image.
 
