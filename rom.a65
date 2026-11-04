@@ -5,11 +5,35 @@
         .setcpu "65C02"         ; This makes more instructions available.
 
         .segment "SYSTEM"
-reset:  sei                     ; This code is for both power-up and hard reset.
+
+ACIA_DATA   = $8800
+ACIA_STATUS = $8801
+ACIA_CMD    = $8802
+ACIA_CTRL   = $8803
+
+PROMPT      = '>'
+
+reset:
+        sei                     ; This code is for both power-up and hard reset.
         cld                     ; Ensure binary, not binary coded decimal (BCD).
         ldx     #$FF            ; $FF represents the top of the stack.
         txs                     ; Transfer it to the stack pointer.
         cli                     ; Allow interrupts once again.
+
+ACIA_reset:
+        lda #$0B                ; no parity, no echo, polling (no TX/RX interrupts)
+        sta ACIA_CMD
+        lda #$1E                ; 9600 baud, 8 data bits, 1 stop bit
+        sta ACIA_CTRL
+
+show_prompt:
+@wait:  lda ACIA_STATUS
+        and #$10                ; transmitter ready?
+        beq @wait
+        lda #PROMPT
+        sta ACIA_DATA
+
+
 
 loop:   jmp     loop            ; Do nothing for now
 
