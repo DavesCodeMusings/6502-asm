@@ -4,11 +4,11 @@
 
         .setcpu "65C02"
 
-        .segment "OS"
+        .segment "SYSTEM"
 
-reset:
-        ldx     #$ff            ;
+reset:  ldx     #$ff            ;
         txs                     ;
+
 loop:   jmp     loop            ;
 
 
