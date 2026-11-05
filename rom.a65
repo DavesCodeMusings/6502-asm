@@ -25,7 +25,6 @@ ACIA_RDRF   = $80               ; Receive Data Register Full (RDRF) bit mask
 PUTS_PTR = $0000                ; 2-byte location of the null-terminated string to be transmitted by the puts subroutine.
 ACIA_FIFO_HEAD = $0002          ; 1-byte index of next buffer location to write. Head of ACIA FIFO.
 ACIA_FIFO_TAIL  = $0003         ; 1-byte index of next buffer location to read. Tail of ACIA FIFO.
-INPUT_ECHO = $0004              ; Set bit 7 to echo each input character, clear for no echo.
 
 
 ;
@@ -47,7 +46,6 @@ init_buffer:
         lda #$00
         sta ACIA_FIFO_HEAD
         sta ACIA_FIFO_TAIL
-        sta INPUT_ECHO
 
 ACIA_reset:
         lda #$00
@@ -103,13 +101,12 @@ putch:
         sta ACIA_DATA           ; and send it.
         rts
 
-
 ; Output a null-terminated string (up to 255 characters) using memory location in registers.
 ; Parameters:
 ;   X = string address low
 ;   Y = string address high
 ; Clobbers:
-;   A, X, Y, Zero page PUTS_PTR
+;   A, X, Y
 puts:
         stx PUTS_PTR
         sty PUTS_PTR+1
@@ -128,7 +125,11 @@ puts:
 @puts_end:
         rts
 
-
+;
+; Non-blocking load of a single byte from the input buffer. Set carry if data was found.
+; Parameters: none.
+; Clobbers: A, X
+;
 getch:
         ldx ACIA_FIFO_TAIL      ; This is the next byte's index.
         cpx ACIA_FIFO_HEAD      ; Is the FIFO empty?
@@ -155,19 +156,16 @@ irq:
 
 ; Check 6551 for input and push to a First In, First Out (FIFO) buffer.
 
-        bit ACIA_STATUS         ; Test N and V bits of ACIA_STATUS. Results in processor status register.
-        bpl @acia_done          ; Same as tesing Bit 7 with AND #$80, but fewer instructions.
-        lda ACIA_DATA           ; Getting to this point means the ACIA caused the interrupt and has data.
+        bit ACIA_STATUS         ; Test bits in ACIA_STATUS to see if new data is available.
+        bpl @acia_done          ; Bit 7 clear means no new data, so skip handling the ACIA.
+        lda ACIA_DATA           ; Get the data byte.
         ldx ACIA_FIFO_HEAD      ; First, test for possible FIFO wrap around:
-        inx                     ; Test HEAD+1 index.
+        inx                     ; Test the next (HEAD+1) index.
         cpx ACIA_FIFO_TAIL      ; Will head and tail pointers be the same?
         beq @acia_done          ;     If so, skip writing to avoid overflow.
         ldx ACIA_FIFO_HEAD      ; Reload the index with the original position.
-        sta ACIA_FIFO,X         ; Write to the head of the FIFO 
+        sta ACIA_FIFO,X         ; Write to the head of the FIFO. 
         inc ACIA_FIFO_HEAD      ; Increment pointer to be ready for the next incoming byte.
-        bit INPUT_ECHO          ; Is echo desired?
-        bpl @acia_done          ;     If not, skip past it.
-        sta ACIA_DATA           ;     Otherwise, send the character to output.
 @acia_done:
 
 @irq_done:
