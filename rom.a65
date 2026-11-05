@@ -41,16 +41,16 @@ ACIA_reset:
         sta ACIA_CTRL
 
 show_ready:
-        lda #<ready_msg
-        ldx #>ready_msg
+        ldx #<ready_msg
+        ldy #>ready_msg
         jsr puts
 
 ;
 ; Command processing loop.
 ;
 show_prompt:
-        lda #<cmd_prompt
-        ldx #>cmd_prompt
+        ldx #<cmd_prompt
+        ldy #>cmd_prompt
         jsr puts
 
 loop:
@@ -61,11 +61,11 @@ loop:
 ;
 
 ; Display a null-terminated string (up to 255 characters) using memory location in registers.
-; Parameters: A = string address high, X = string address low
+; Parameters: X = string address low, X = string address high
 ; Clobbers: A, X, Y, Zero page PUTS_PTR
 puts:
-        sta PUTS_PTR
-        stx PUTS_PTR+1
+        stx PUTS_PTR
+        sty PUTS_PTR+1
         ldy #$00                ; Used to iterate over the characters.
 @nextch:
         lda (PUTS_PTR),Y        ; Check for null terminator.
