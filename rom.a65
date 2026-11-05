@@ -60,9 +60,26 @@ loop:
 ; Subroutines
 ;
 
-; Display a null-terminated string (up to 255 characters) using memory location in registers.
-; Parameters: X = string address low, X = string address high
-; Clobbers: A, X, Y, Zero page PUTS_PTR
+; Output a single character.
+; Parameters:
+;   A = character to be sent.
+putch:
+        pha                     ; Save the character until ACIA TX status is checked.
+@putch_wait:
+        lda ACIA_STATUS
+        and #ACIA_TDRE          ; Buffer empty and ready to transmit?
+        beq @putch_wait
+        pla                     ; Retrieve the character
+        sta ACIA_DATA           ; and send it.
+        rts
+
+
+; Output a null-terminated string (up to 255 characters) using memory location in registers.
+; Parameters:
+;   X = string address low
+;   Y = string address high
+; Clobbers:
+;   A, X, Y, Zero page PUTS_PTR
 puts:
         stx PUTS_PTR
         sty PUTS_PTR+1
