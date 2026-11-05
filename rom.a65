@@ -73,11 +73,17 @@ show_prompt:
 
 loop:
         jsr getch
-        cmp #$0D                ; Check for carriage return.
-        bne @no_newline
-        lda #$0A                ; Output a newline.
-        jsr putch
-@no_newline:
+        bcc loop                ; Carry bit will be set when valid data is in the Accumulator.
+        cmp #$0D                ; Check for carriage return (Enter key.)
+        bne @not_cr
+        ldx #<cr_lf             ; Send a carriage return and line feed to put the cursor on the next line.
+        ldy #>cr_lf
+        jsr puts
+        nop                     ; Processing of the command would go here.
+        ldx #<cmd_prompt        ; Display a prompt for the next command.
+        ldy #>cmd_prompt
+        jsr puts
+@not_cr:
         jmp loop                ; Do nothing else for now.
 
 ;
@@ -93,7 +99,7 @@ putch:
         lda ACIA_STATUS
         and #ACIA_TDRE          ; Buffer empty and ready to transmit?
         beq @putch_wait
-        pla                     ; Retrieve the character
+        pla                     ; Retrieve the character.
         sta ACIA_DATA           ; and send it.
         rts
 
@@ -126,11 +132,14 @@ puts:
 getch:
         ldx ACIA_FIFO_TAIL      ; This is the next byte's index.
         cpx ACIA_FIFO_HEAD      ; Is the FIFO empty?
-        beq @getch_end          ;     If so, skip the rest.
+        beq @empty              ;     If so, skip the rest.
         lda ACIA_FIFO,X         ; Load the byte.
         jsr putch               ; Just echo for now.
         inc ACIA_FIFO_TAIL
-@getch_end:
+        sec                     ; Set carry bit to indicate data is available.
+        rts
+@empty:
+        clc                     ; Clear carry to signal no data.
         rts
 
 
@@ -179,6 +188,8 @@ nmi:    jmp     nmi
 ;
 ; Strings
 ;
+cr_lf:
+        .byte $0D, $0A, $00
 ready_msg:
         .byte "System Ready.", $0D, $0A, $00
 cmd_prompt:
