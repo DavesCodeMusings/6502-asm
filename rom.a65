@@ -15,13 +15,23 @@ ACIA_STATUS = ACIA_BASE + 1
 ACIA_CMD    = ACIA_BASE + 2
 ACIA_CTRL   = ACIA_BASE + 3
 
-ACIA_TDRE   = $10               ; Transmit Data Register Empty (TDRE) bit flag
+ACIA_TDRE   = $10               ; Transmit Data Register Empty (TDRE) bit mask
+ACIA_RDRF   = $80               ; Receive Data Register Full (RDRF) bit mask
 
 
 ;
 ; Zero page locations
 ;
-PUTS_PTR = $0000                ; 2-byte location of the null-terminated string to be transmitted by the puts subroutine. 
+PUTS_PTR = $0000                ; 2-byte location of the null-terminated string to be transmitted by the puts subroutine.
+ACIA_FIFO_HEAD = $0002          ; 1-byte index of next buffer location to write. Head of ACIA FIFO.
+ACIA_FIFO_TAIL  = $0003         ; 1-byte index of next buffer location to read. Tail of ACIA FIFO.
+INPUT_ECHO = $0004              ; Set bit 7 to echo each input character, clear for no echo.
+
+
+;
+; Input buffer
+;
+ACIA_FIFO = $200                ; Raw input from the 6551 ACIA (up to 255 bytes.)
 
 
 ;
@@ -32,13 +42,21 @@ reset:
         cld                     ; Ensure binary, not binary coded decimal (BCD).
         ldx     #$FF            ; $FF represents the top of the stack.
         txs                     ; Transfer it to the stack pointer.
-        cli                     ; Allow interrupts once again.
+
+init_buffer:
+        lda #$00
+        sta ACIA_FIFO_HEAD
+        sta ACIA_FIFO_TAIL
+        sta INPUT_ECHO
 
 ACIA_reset:
-        lda #$0B                ; Configure no parity, no echo, and polling mode (no TX/RX interrupts)
+        lda #$00
+        sta ACIA_STATUS         ; Software reset of 6551 by writing to status register.
+        lda #$09                ; Configure no parity, no echo, RX interrupt, but no TX interrupt.
         sta ACIA_CMD
         lda #$1E                ; Configure 9600 baud, 8 data bits, 1 stop bit.
         sta ACIA_CTRL
+        cli                     ; Allow interrupts again.
 
 show_ready:
         ldx #<ready_msg
@@ -54,7 +72,13 @@ show_prompt:
         jsr puts
 
 loop:
-        jmp     loop            ; Do nothing for now
+        jsr getch
+        cmp #$0D                ; Check for carriage return.
+        bne @no_newline
+        lda #$0A                ; Output a newline.
+        jsr putch
+@no_newline:
+        jmp loop                ; Do nothing else for now.
 
 ;
 ; Subroutines
@@ -99,20 +123,72 @@ puts:
         rts
 
 
+getch:
+        ldx ACIA_FIFO_TAIL      ; This is the next byte's index.
+        cpx ACIA_FIFO_HEAD      ; Is the FIFO empty?
+        beq @getch_end          ;     If so, skip the rest.
+        lda ACIA_FIFO,X         ; Load the byte.
+        jsr putch               ; Just echo for now.
+        inc ACIA_FIFO_TAIL
+@getch_end:
+        rts
+
+
+;
+; Handle interrupts.
+;
+irq:
+        pha
+        txa
+        pha
+        tya
+        pha
+
+; Check 6551 for input and push to a First In, First Out (FIFO) buffer.
+
+        bit ACIA_STATUS         ; Test N and V bits of ACIA_STATUS. Results in processor status register.
+        bpl @acia_done          ; Same as tesing Bit 7 with AND #$80, but fewer instructions.
+        lda ACIA_DATA           ; Getting to this point means the ACIA caused the interrupt and has data.
+        ldx ACIA_FIFO_HEAD      ; First, test for possible FIFO wrap around:
+        inx                     ; Test HEAD+1 index.
+        cpx ACIA_FIFO_TAIL      ; Will head and tail pointers be the same?
+        beq @acia_done          ;     If so, skip writing to avoid overflow.
+        ldx ACIA_FIFO_HEAD      ; Reload the index with the original position.
+        sta ACIA_FIFO,X         ; Write to the head of the FIFO 
+        inc ACIA_FIFO_HEAD      ; Increment pointer to be ready for the next incoming byte.
+        bit INPUT_ECHO          ; Is echo desired?
+        bpl @acia_done          ;     If not, skip past it.
+        sta ACIA_DATA           ;     Otherwise, send the character to output.
+@acia_done:
+
+@irq_done:
+        pla
+        tay
+        pla
+        tax
+        pla
+        rti
+
+
+;
+; Handle non-maskable interrupts.
+;
 nmi:    jmp     nmi
 
 
-irq_brk: 
-        jmp     irq_brk        ;
-
-
+;
+; Strings
+;
 ready_msg:
         .byte "System Ready.", $0D, $0A, $00
 cmd_prompt:
         .byte "* ", $00         ; Default prompt for command entry.
 
 
+;
+; Pointers for software routines that execute in response to hardware inputs.
+;
         .segment "VECTORS"      ; 6502 pointers at the top of the address range.
         .word   nmi             ; NMI
         .word   reset           ; RESET
-        .word   irq_brk         ; IRQ/BRK
+        .word   irq             ; Hardware IRQ / software BRK
