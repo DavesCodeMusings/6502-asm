@@ -1,17 +1,22 @@
 ;
-; ROM demo 
+; ROM demo with a 6551 ACIA mapped to $8800
 ;
 
         .setcpu "65C02"         ; This makes more instructions available.
 
         .segment "SYSTEM"
 
-ACIA_DATA   = $8800
-ACIA_STATUS = $8801
-ACIA_CMD    = $8802
-ACIA_CTRL   = $8803
+ACIA_BASE   = $8800
+ACIA_DATA   = ACIA_BASE
+ACIA_STATUS = ACIA_BASE + 1
+ACIA_CMD    = ACIA_BASE + 2
+ACIA_CTRL   = ACIA_BASE + 3
 
-PROMPT      = '>'
+ACIA_TDRE   = $10             ; Transmit Data Register Empty (TDRE) bit flag
+
+
+PROMPT      = '*'
+
 
 reset:
         sei                     ; This code is for both power-up and hard reset.
@@ -28,7 +33,7 @@ ACIA_reset:
 
 show_prompt:
 @wait:  lda ACIA_STATUS
-        and #$10                ; transmitter ready?
+        and #ACIA_TDRE          ; Buffer empty and ready to transmit?
         beq @wait
         lda #PROMPT
         sta ACIA_DATA
