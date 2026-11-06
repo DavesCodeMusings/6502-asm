@@ -72,6 +72,8 @@ show_prompt:
 loop:
         jsr getch
         bcc loop                ; Carry bit will be set when valid data is in the Accumulator.
+        cmp #$20                ; Check for control characters (below ascii space character.)          
+        bcs @printable          ; No borrow on compare means space character or higher, so skip control processing.
         cmp #$0D                ; Check for carriage return (Enter key.)
         bne @not_cr
         ldx #<cr_lf             ; Send a carriage return and line feed to put the cursor on the next line.
@@ -81,6 +83,8 @@ loop:
         ldx #<cmd_prompt        ; Display a prompt for the next command.
         ldy #>cmd_prompt
         jsr puts
+@printable:
+        jsr putch
 @not_cr:
         jmp loop                ; Do nothing else for now.
 
@@ -135,12 +139,11 @@ getch:
         cpx ACIA_FIFO_HEAD      ; Is the FIFO empty?
         beq @empty              ;     If so, skip the rest.
         lda ACIA_FIFO,X         ; Load the byte.
-        jsr putch               ; Just echo for now.
-        inc ACIA_FIFO_TAIL
+        inc ACIA_FIFO_TAIL      ; Move the buffer pointer up.
         sec                     ; Set carry bit to indicate data is available.
         rts
 @empty:
-        clc                     ; Clear carry to signal no data.
+        clc                     ; Clear carry bit to signal no data available.
         rts
 
 
