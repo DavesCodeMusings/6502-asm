@@ -7,20 +7,21 @@
         .segment "SYSTEM"
 
 ;
-; 6551 Asynchronous Communications Interface Adapter (ACIA) hardware
+; 6551 Asynchronous Communications Interface Adapter (ACIA) hardware.
+; https://6502.org/documents/datasheets/mos/mos_6551_acia.pdf
 ;
-ACIA_BASE   = $8800
-ACIA_DATA   = ACIA_BASE
-ACIA_STATUS = ACIA_BASE + 1
-ACIA_CMD    = ACIA_BASE + 2
-ACIA_CTRL   = ACIA_BASE + 3
+ACIA_BASE   = $8800             ; Two register select pins are memory mapped from here, giving four possible addresses.
+ACIA_DATA   = ACIA_BASE         ; RS1 = 0, RS0 = 0
+ACIA_STATUS = ACIA_BASE + 1     ; RS1 = 0, RS0 = 1
+ACIA_CMD    = ACIA_BASE + 2     ; RS1 = 1, RS0 = 0
+ACIA_CTRL   = ACIA_BASE + 3     ; RS1 = 1, RS0 = 1
 
 ACIA_TDRE   = $10               ; Transmit Data Register Empty (TDRE) bit mask
 ACIA_RDRF   = $80               ; Receive Data Register Full (RDRF) bit mask
 
 
 ;
-; Zero page locations
+; Zero page locations.
 ;
 PUTS_PTR = $0000                ; 2-byte location of the null-terminated string to be transmitted by the puts subroutine.
 ACIA_FIFO_HEAD = $0002          ; 1-byte index of next buffer location to read. Head of ACIA FIFO.
@@ -28,55 +29,52 @@ ACIA_FIFO_TAIL = $0003          ; 1-byte index of next buffer location to write.
 
 
 ;
-; Input buffer
+; Input ring buffer.
 ;
-ACIA_FIFO = $200                ; Raw input from the 6551 ACIA (up to 255 bytes.)
+ACIA_FIFO = $200                ; Raw bytes received from the 6551 ACIA (up to 255 bytes.)
 
 
 ;
-; Code executed at power-up or hardware reset.
+; Code to be executed at power-up or hardware reset. Responsible for getting the processor to a usable state.
 ;
 reset:
-        sei
+        sei                     ; Don't want to be disturbed while all this is set up.
         cld                     ; Ensure binary, not binary coded decimal (BCD).
         ldx     #$FF            ; $FF represents the top of the stack.
-        txs                     ; Transfer it to the stack pointer.
+        txs                     ; Transfer the value to the stack pointer.
 
-init_buffer:
-        lda #$00
+        lda #$00                ; Head and tail are initially the same to indicate the input buffer is empty.
         sta ACIA_FIFO_HEAD
         sta ACIA_FIFO_TAIL
 
-ACIA_reset:
         lda #$00
-        sta ACIA_STATUS         ; Software reset of 6551 by writing to status register.
+        sta ACIA_STATUS         ; Software reset of 6551 by writing to device's status register.
         lda #$09                ; Configure no parity, no echo, RX interrupt, but no TX interrupt.
         sta ACIA_CMD
         lda #$1E                ; Configure 9600 baud, 8 data bits, 1 stop bit.
         sta ACIA_CTRL
+
         cli                     ; Allow interrupts again.
 
-show_ready:
-        ldx #<ready_msg
+        ldx #<ready_msg         ; Output a message to tell the user the system is ready for input.
         ldy #>ready_msg
         jsr puts
 
 ;
-; Command processing loop.
+; Command processing loop: Show prompt. Get input. Execute command. Repeat.
 ;
-show_prompt:
         ldx #<cmd_prompt
         ldy #>cmd_prompt
         jsr puts
 
 loop:
-        jsr getch
-        bcc loop                ; Carry bit will be set when valid data is in the Accumulator.
-        cmp #$20                ; Check for control characters (below ascii space character.)          
-        bcs @printable          ; No borrow on compare means space character or higher, so skip control processing.
+        jsr getch               ; (Possibly) load a single character of terminal input from the buffer.
+        bcc loop                ; Carry bit will be set by getch when valid data is in the Accumulator.
+        cmp #$20                ; Check for control characters (anything ordinally lower than ASCII space.)
+        bcs @printable          ; Skip control processing if ASCII space or higher.
         cmp #$0D                ; Check for carriage return (Enter key.)
         bne @not_cr
-        ldx #<cr_lf             ; Send a carriage return and line feed to put the cursor on the next line.
+        ldx #<cr_lf             ; Send a carriage return, line feed combination to move the cursor down.
         ldy #>cr_lf
         jsr puts
         nop                     ; Processing of the command would go here.
@@ -84,19 +82,21 @@ loop:
         ldy #>cmd_prompt
         jsr puts
 @printable:
-        jsr putch
+        jsr putch               ; Any non-control characters are echoed to the user's terminal.
 @not_cr:
-        jmp loop                ; Do nothing else for now.
+        jmp loop                ; Repeat.
 
 ;
-; Subroutines
+; Utility subroutines for input and output.
 ;
 
-; Output a single character.
-; Parameters:
-;   A = character to be sent.
+; putch A
+; Send a single character to the 6551 ACIA.
+;   Parameters: A = character to be sent.
+;   Returns: nothing.
+;   Registers clobbered: none.
 putch:
-        pha                     ; Save the character until ACIA TX status is checked.
+        pha                     ; Save the character while ACIA TX status is checked.
 @putch_wait:
         lda ACIA_STATUS
         and #ACIA_TDRE          ; Buffer empty and ready to transmit?
@@ -105,12 +105,11 @@ putch:
         sta ACIA_DATA           ; and send it.
         rts
 
-; Output a null-terminated string (up to 255 characters) using memory location in registers.
-; Parameters:
-;   X = string address low
-;   Y = string address high
-; Clobbers:
-;   A, X, Y
+; puts X, Y
+; Output a null-terminated string (up to 255 characters) passing memory location in registers.
+;   Parameters: X = string address low. Y = string address high.
+;   Returns: nothing.
+;   Registers clobbered: A, X, Y.
 puts:
         stx PUTS_PTR
         sty PUTS_PTR+1
@@ -129,11 +128,11 @@ puts:
 @puts_end:
         rts
 
-;
+; getch
 ; Non-blocking load of a single byte from the input buffer. Set carry if data was found.
-; Parameters: none.
-; Clobbers: A, X
-;
+;   Parameters: none.
+;   Returns: Carry set if data. Data byte in Accumulator.
+;   Registers clobbered: A, X.
 getch:
         ldx ACIA_FIFO_HEAD      ; This is the next byte's index.
         cpx ACIA_FIFO_TAIL      ; Is the FIFO empty?
@@ -148,10 +147,10 @@ getch:
 
 
 ;
-; Handle interrupts.
+; Interrupt Service Routine (ISR) to handle hardware interrupts on the CPU's /IRQ line.
 ;
-irq:
-        pha
+isr:
+        pha                     ; Save registers to avoid trashing whatever process got interrupted.
         txa
         pha
         tya
@@ -169,10 +168,9 @@ irq:
         ldx ACIA_FIFO_TAIL      ; Reload the index with the original position.
         sta ACIA_FIFO,X         ; Write to the head of the FIFO. 
         inc ACIA_FIFO_TAIL      ; Increment pointer to be ready for the next incoming byte.
-@acia_done:
 
-@irq_done:
-        pla
+@acia_done:
+        pla                     ; Restore saved registers before exiting.
         tay
         pla
         tax
@@ -200,7 +198,7 @@ cmd_prompt:
 ;
 ; Pointers for software routines that execute in response to hardware inputs.
 ;
-        .segment "VECTORS"      ; 6502 pointers at the top of the address range.
+        .segment "VECTORS"      ; Place 6502 pointers at the top of the address range.
         .word   nmi             ; NMI
         .word   reset           ; RESET
-        .word   irq             ; Hardware IRQ / software BRK
+        .word   isr             ; Hardware IRQ / software BRK
