@@ -23,8 +23,8 @@ ACIA_RDRF   = $80               ; Receive Data Register Full (RDRF) bit mask
 ; Zero page locations
 ;
 PUTS_PTR = $0000                ; 2-byte location of the null-terminated string to be transmitted by the puts subroutine.
-ACIA_FIFO_HEAD = $0002          ; 1-byte index of next buffer location to write. Head of ACIA FIFO.
-ACIA_FIFO_TAIL  = $0003         ; 1-byte index of next buffer location to read. Tail of ACIA FIFO.
+ACIA_FIFO_HEAD = $0002          ; 1-byte index of next buffer location to read. Head of ACIA FIFO.
+ACIA_FIFO_TAIL = $0003          ; 1-byte index of next buffer location to write. Tail of ACIA FIFO.
 
 
 ;
@@ -135,11 +135,11 @@ puts:
 ; Clobbers: A, X
 ;
 getch:
-        ldx ACIA_FIFO_TAIL      ; This is the next byte's index.
-        cpx ACIA_FIFO_HEAD      ; Is the FIFO empty?
+        ldx ACIA_FIFO_HEAD      ; This is the next byte's index.
+        cpx ACIA_FIFO_TAIL      ; Is the FIFO empty?
         beq @empty              ;     If so, skip the rest.
         lda ACIA_FIFO,X         ; Load the byte.
-        inc ACIA_FIFO_TAIL      ; Move the buffer pointer up.
+        inc ACIA_FIFO_HEAD      ; Move the buffer pointer up.
         sec                     ; Set carry bit to indicate data is available.
         rts
 @empty:
@@ -162,13 +162,13 @@ irq:
         bit ACIA_STATUS         ; Test bits in ACIA_STATUS to see if new data is available.
         bpl @acia_done          ; Bit 7 clear means no new data, so skip handling the ACIA.
         lda ACIA_DATA           ; Get the data byte.
-        ldx ACIA_FIFO_HEAD      ; First, test for possible FIFO wrap around:
+        ldx ACIA_FIFO_TAIL      ; First, test for possible FIFO wrap around:
         inx                     ; Test the next (HEAD+1) index.
-        cpx ACIA_FIFO_TAIL      ; Will head and tail pointers be the same?
+        cpx ACIA_FIFO_HEAD      ; Will head and tail pointers be the same?
         beq @acia_done          ;     If so, skip writing to avoid overflow.
-        ldx ACIA_FIFO_HEAD      ; Reload the index with the original position.
+        ldx ACIA_FIFO_TAIL      ; Reload the index with the original position.
         sta ACIA_FIFO,X         ; Write to the head of the FIFO. 
-        inc ACIA_FIFO_HEAD      ; Increment pointer to be ready for the next incoming byte.
+        inc ACIA_FIFO_TAIL      ; Increment pointer to be ready for the next incoming byte.
 @acia_done:
 
 @irq_done:
