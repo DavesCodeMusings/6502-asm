@@ -18,6 +18,8 @@ something like that."
 What you'll find here is some documentation for setting up tools on a 64-bit
 Windows 11 system to build and run 65C02 assembly. See README-TOOLS.txt.
 
-At some point I may actually create some ROM images and make them available
-here. But until then, I hope this will save you some time getting things set
-up for building.
+There is one ROM image I am working on, rom.a65. So far it has only been
+tested on the Symon emulator. The main loop will echo whatever you type at
+the terminal. There is a 6522 Timer 1 interrupt set up to count 1/100th of
+a second (kind of like how Arduino does Millis.) But, it has not been tested
+yet.
