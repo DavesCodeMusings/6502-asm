@@ -4,7 +4,27 @@
 
         .setcpu "65C02"         ; This makes more instructions available.
 
-        .segment "SYSTEM"
+;
+; Macro definitions for memory locations and bit masks.
+;
+
+
+;
+; 6522 Versatile Interface Adapter (VIA)
+; https://6502.org/documents/datasheets/mos/mos_6522_preliminary_nov_1977.pdf
+;
+VIA_BASE    = $8000             ; Four register select pins are memory mapped from here, giving sixteen possible addresses.
+VIA_ORB     = VIA_BASE          ; Output Register B (ORB)
+VIA_ORA     = VIA_BASE + 1      ; Output Register A (ORA)
+VIA_DDRB    = VIA_BASE + 2      ; Data Direction Register B (DDRB)
+VIA_DDRA    = VIA_BASE + 3      ; Data Direction Register A (DDRA)
+VIA_T1C_L   = VIA_BASE + 4      ; Timer 1 Count LOW (T1L-L). Low-order byte of initial 16-bit counter value written here.
+VIA_T1C_H   = VIA_BASE + 5      ; Timer 1 Count HIGH (T1L-H). High-order byte of initial 16-bit counter. Writing starts timer.
+VIA_ACR     = VIA_BASE + $0B    ; Auxiliary Control Register (ACR)
+VIA_IFR     = VIA_BASE + $0D    ; Interrupt Flag Register (IFR). Read or clear interrupt flags.
+VIA_IER     = VIA_BASE + $0E    ; Interrupt Enable Register (IER). Mask to enable / disable different interrupt triggers.
+
+VIA_T1_PERIOD = 9998            ; 1 mS - 2 uS on a 1MHz system. Interval time is (period + 1) / clock_freq.
 
 ;
 ; 6551 Asynchronous Communications Interface Adapter (ACIA) hardware.
@@ -23,15 +43,23 @@ ACIA_RDRF   = $80               ; Receive Data Register Full (RDRF) bit mask
 ;
 ; Zero page locations.
 ;
-PUTS_PTR = $0000                ; 2-byte location of the null-terminated string to be transmitted by the puts subroutine.
-ACIA_FIFO_HEAD = $0002          ; 1-byte index of next buffer location to read. Head of ACIA FIFO.
-ACIA_FIFO_TAIL = $0003          ; 1-byte index of next buffer location to write. Tail of ACIA FIFO.
+JIFFIES= $0000                  ; 4-byte elapsed 1/100 second counter updated by free running 6522 VIA Timer 1 interrupt.
+PUTS_PTR = $0004                ; 2-byte location of the null-terminated string to be transmitted by the puts subroutine.
+ACIA_FIFO_HEAD = $0006          ; 1-byte index of next buffer location to read. Head of ACIA FIFO.
+ACIA_FIFO_TAIL = $0007          ; 1-byte index of next buffer location to write. Tail of ACIA FIFO.
 
 
 ;
 ; Input ring buffer.
 ;
 ACIA_FIFO = $200                ; Raw bytes received from the 6551 ACIA (up to 255 bytes.)
+
+
+;
+; Start of 16k ROM
+;
+        .segment "SYSTEM"
+        .org $C000
 
 
 ;
@@ -43,6 +71,24 @@ reset:
         ldx     #$FF            ; $FF represents the top of the stack.
         txs                     ; Transfer the value to the stack pointer.
 
+; Ensure the 32-bit jiffies (1/100th of a second) counter is reset to zero.
+        lda #$00
+        sta JIFFIES
+        sta JIFFIES + 1
+        sta JIFFIES + 2
+        sta JIFFIES + 3
+
+; The 6522 VIA is initialized as a timer interrupting at regular intervals to serve as a real-time clock interrupt.
+        lda #$40                ; Timer 1 operating in free running mode with no PB7 toggle.
+        sta VIA_ACR             ; Save the configuration to the Auxiliary Control Register (ACR).
+        lda #<VIA_T1_PERIOD     ; Store the lower byte of the T1 time period.
+        sta VIA_T1C_L           ; Actual transfer of this value happens when the high-order byte is written.
+        lda #>VIA_T1_PERIOD     ; Store the upper byte of the T1 time period.
+        sta VIA_T1C_H           ; Writing this value also starts the timer.
+        lda #$C0                ; Bit 7 is the enable/disable flag. Bit 6 is for Timer 1.
+        sta VIA_IER             ; Save the configuration to the Interrupt Enable Register (IER).
+
+; The 6551 ACIA is initialized at 9600 bps, 8 data bits, no parity¿one stop bit, to serve as a console terminal.
         lda #$00                ; Head and tail are initially the same to indicate the input buffer is empty.
         sta ACIA_FIFO_HEAD
         sta ACIA_FIFO_TAIL
@@ -155,6 +201,20 @@ isr:
         pha
         tya
         pha
+
+; Check 6522 for timer 1 interrupt and update jiffies counter.
+        bit VIA_IFR
+        bvc @timer1_done
+        lda #$40
+        sta VIA_IFR
+        inc JIFFIES
+        bne @timer1_done
+        inc JIFFIES + 1
+        bne @timer1_done
+        inc JIFFIES + 2
+        bne @timer1_done
+        inc JIFFIES + 3
+@timer1_done:
 
 ; Check 6551 for input and push to a First In, First Out (FIFO) buffer.
 
