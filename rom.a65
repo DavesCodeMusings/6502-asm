@@ -158,13 +158,14 @@ get_cmd:
         jmp get_cmd             ; When done, go back to looping through input characters.
 @check_cr:
         cmp #$0D                ; It it a carriage return?
-        bne @ctrl_done          ; If not, there's nothing else to check.
+        bne @ctrl_error         ; If not, there's nothing else to check, so complain.
         lda #$00                ; Load a null terminator.
         jsr push_cmd_buffer     ; Put it at the end.
-        jsr parse_cmd           ; Otherwise, Carriage Return means the command is ready to be parsed.
+        bcs @ctrl_error         ; The buffer is full and there's no room for a null terminator.
+        jsr parse_cmd           ; Otherwise, successful Carriage Return means command is ready for parseing.
         jmp new_prompt          ; After the command is done, the prompt needs to be shown.
-@ctrl_done:
-        lda #$07                ; Bell as error for anything unhandled.
+@ctrl_error:
+        lda #$07                ; Bell as error for errors and any characters not handled.
         jsr putch
         jmp get_cmd
 
