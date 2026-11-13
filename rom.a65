@@ -48,7 +48,6 @@ PUTS_PTR = $0004                ; 2-byte location of the null-terminated string 
 ACIA_FIFO_HEAD = $0006          ; 1-byte index of next buffer location to read. Head of ACIA FIFO.
 ACIA_FIFO_TAIL = $0007          ; 1-byte index of next buffer location to write. Tail of ACIA FIFO.
 CMD_BUFFER_PTR = $0008          ; Index pointer of First-In Last-Out (FILO) command buffer.
-CMD_MAX_LEN = $10               ; The longest command accepted (not including null terminator.
 
 ;
 ; Input ring buffer.
@@ -59,6 +58,7 @@ ACIA_FIFO = $200                ; Raw bytes received from the 6551 ACIA (up to 2
 ; Command buffer.
 ;
 CMD_BUFFER = $300               ; Bytes processed from input buffer that form a command string.
+CMD_MAX_LEN = $10               ; The longest command accepted (not including null terminator.
 
 ;
 ; Start of 16k ROM
