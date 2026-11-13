@@ -47,13 +47,18 @@ JIFFIES= $0000                  ; 4-byte elapsed 1/100 second counter updated by
 PUTS_PTR = $0004                ; 2-byte location of the null-terminated string to be transmitted by the puts subroutine.
 ACIA_FIFO_HEAD = $0006          ; 1-byte index of next buffer location to read. Head of ACIA FIFO.
 ACIA_FIFO_TAIL = $0007          ; 1-byte index of next buffer location to write. Tail of ACIA FIFO.
-
+CMD_BUFFER_PTR = $0008          ; Index pointer of First-In Last-Out (FILO) command buffer.
+CMD_MAX_LEN = $10               ; The longest command accepted (not including null terminator.
 
 ;
 ; Input ring buffer.
 ;
 ACIA_FIFO = $200                ; Raw bytes received from the 6551 ACIA (up to 255 bytes.)
 
+;
+; Command buffer.
+;
+CMD_BUFFER = $300               ; Bytes processed from input buffer that form a command string.
 
 ;
 ; Start of 16k ROM
@@ -100,37 +105,108 @@ reset:
         lda #$1E                ; Configure 9600 baud, 8 data bits, 1 stop bit.
         sta ACIA_CTRL
 
-        cli                     ; Allow interrupts again.
+; The command buffer pointer is reset to the beginning.
+        lda #$00
+        sta CMD_BUFFER_PTR
 
+; Ready to accept user input.
+        cli                     ; Allow interrupts again.
         ldx #<ready_msg         ; Output a message to tell the user the system is ready for input.
         ldy #>ready_msg
         jsr puts
 
 ;
-; Command processing loop: Show prompt. Get input. Execute command. Repeat.
+; Prompt for a command and take user input from the terminal.
 ;
+new_prompt:
+        lda #$00
+        sta CMD_BUFFER_PTR
         ldx #<cmd_prompt
         ldy #>cmd_prompt
         jsr puts
 
-loop:
+; Loop forever.
+get_cmd:
         jsr getch               ; (Possibly) load a single character of terminal input from the buffer.
-        bcc loop                ; Carry bit will be set by getch when valid data is in the Accumulator.
-        cmp #$20                ; Check for control characters (anything ordinally lower than ASCII space.)
-        bcs @printable          ; Skip control processing if ASCII space or higher.
-        cmp #$0D                ; Check for carriage return (Enter key.)
-        bne @not_cr
-        ldx #<cr_lf             ; Send a carriage return, line feed combination to move the cursor down.
+        bcc get_cmd             ; Carry bit will be set only when valid data is in the Accumulator.
+        cmp #$7F                ; The ASCII Delete key ($7F) is labeled Backspace on most PC keyboards.
+        bne @check_ctrl         ; When it's not equal to $7F there's nothing special to do.
+        lda #$08                ; When it is $7F, replace Delete key ($7F) with Backspace ($08).
+@check_ctrl:
+        cmp #$20                ; Control characters are anything ordinally lower than ASCII space ($20).
+        bcs @printable          ; Space ($20) and above are printable characters.
+        jmp @handle_ctrl        ; Below $20 is subject to further processing.
+@printable:
+        jsr push_cmd_buffer     ; Add the character to the current command buffer.
+        bcc @echo               ; If the carry is clear, it was successful. Carry set means buffer full.
+        lda #$07                ; Send a bell character as a warning.
+@echo:
+        jsr putch               ; Echo the character to the terminal.
+        jmp get_cmd             ; Repeat.
+
+; Take care of bell, backspace, carriage return. ASCII below $20.
+@handle_ctrl:
+        cmp #$08                ; Is it backspace?
+        bne @check_cr           ; If not, check the next significant CTRL character.
+        jsr pop_cmd_buffer      ; Handle the backspace by popping the last character off and discarding it.
+        lda #$08                ; Reload the clobbered backspace character.
+        jsr putch               ; Echo it to the terminal to back up one character.
+        lda #$20                ; Load a space.
+        jsr putch               ; Echo it to overwrite the character.
+        lda #$08                ; Load another backspace.
+        jsr putch               ; Echo it to back up before the space used to overwrite.
+        jmp get_cmd             ; When done, go back to looping through input characters.
+@check_cr:
+        cmp #$0D                ; It it a carriage return?
+        bne @ctrl_done          ; If not, there's nothing else to check.
+        lda #$00                ; Load a null terminator.
+        jsr push_cmd_buffer     ; Put it at the end.
+        jsr parse_cmd           ; Otherwise, Carriage Return means the command is ready to be parsed.
+        jmp new_prompt          ; After the command is done, the prompt needs to be shown.
+@ctrl_done:
+        lda #$07                ; Bell as error for anything unhandled.
+        jsr putch
+        jmp get_cmd
+
+
+;
+; Handle the command buffer LIFO and return either results or an error message.
+;
+
+; push_cmd_buffer A
+; Append a character to the end.
+;   Parameters: A - character to be appended.
+;   Returns: Carry clear if success.
+;   Registers clobbered: X
+push_cmd_buffer:
+        ldx CMD_BUFFER_PTR
+        cpx #CMD_MAX_LEN        ; If the pointer is greater than the maximum available length:
+        bcs @push_done          ; The buffer is full, so keep Carry set as an error indicator and skip the rest.
+        sta CMD_BUFFER,X        ; Otherwise, store the character in the buffer.
+        inc CMD_BUFFER_PTR      ; And bump the pointer to the next position.
+@push_done:
+        rts
+
+; pop_cmd_buffer
+; Retrieve last value in buffer and return in A if successful.
+;   Parameters: none.
+;   Returns: Carry clear if success.
+;   Registers clobbered: X
+pop_cmd_buffer:
+        ldx CMD_BUFFER_PTR
+        beq @pop_done           ; If the pointer is zero, there's nothing to pop, so skip the rest.
+        dex                     ; Otherwise, decrement the pointer.
+        lda CMD_BUFFER,X        ; Load the value into the accumulator.
+        stx CMD_BUFFER_PTR      ; Update the pointer.
+@pop_done:
+        rts
+
+parse_cmd:
+        nop                     ; TODO
+        ldx #<cr_lf
         ldy #>cr_lf
         jsr puts
-        nop                     ; Processing of the command would go here.
-        ldx #<cmd_prompt        ; Display a prompt for the next command.
-        ldy #>cmd_prompt
-        jsr puts
-@printable:
-        jsr putch               ; Any non-control characters are echoed to the user's terminal.
-@not_cr:
-        jmp loop                ; Repeat.
+        rts
 
 ;
 ; Utility subroutines for input and output.
@@ -228,8 +304,18 @@ isr:
         ldx ACIA_FIFO_TAIL      ; Reload the index with the original position.
         sta ACIA_FIFO,X         ; Write to the head of the FIFO. 
         inc ACIA_FIFO_TAIL      ; Increment pointer to be ready for the next incoming byte.
-
 @acia_done:
+
+; Check save status register for a possible BRK interrupt.
+
+        tsx
+        lda $0104,x             ; Saved status register is 3 bytes deeper, because we saved A, X, Y registers.
+        and #$10                ; BRK flag is at bit 4 of the saved status register.
+        beq @brk_done           ; If it's clear, there was no BRK encountered.
+        nop                     ; TODO: Check byte after BRK and execute subroutines from a jump vector table.
+        jmp ($FFFE)             ; Restart the system like it just powered on.
+@brk_done:
+
         pla                     ; Restore saved registers before exiting.
         tay
         pla
