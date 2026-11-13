@@ -20,6 +20,11 @@ Windows 11 system to build and run 65C02 assembly. See README-TOOLS.txt.
 
 There is one ROM image I am working on, rom.a65. So far it has only been
 tested on the Symon emulator. The main loop will echo whatever you type at
-the terminal. There is a 6522 Timer 1 interrupt set up to count 1/100th of
-a second (kind of like how Arduino does Millis.) But, it has not been tested
-yet.
+the terminal and put it in a command buffer waiting for a carriage return.
+
+Input and output is from a serial terminal attached to the 6551 ACIA. New
+character input is fetched by an interrupt service routine.
+
+The 6522 VIA has a Timer 1 interrupt set up to count 1/100th of a second
+(kind of like how Arduino does Millis.) But, it has not been tested yet,
+because Symon does not have an emulated Timer 1 for the 6522.
