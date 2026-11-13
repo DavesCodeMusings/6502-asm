@@ -333,10 +333,10 @@ nmi:    jmp     nmi
 ;
 ; Strings
 ;
+ready_msg:
+        .byte "System Ready."
 cr_lf:
         .byte $0D, $0A, $00
-ready_msg:
-        .byte "System Ready.", $0D, $0A, $00
 cmd_prompt:
         .byte "* ", $00         ; Default prompt for command entry.
 
