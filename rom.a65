@@ -43,22 +43,36 @@ ACIA_RDRF   = $80               ; Receive Data Register Full (RDRF) bit mask
 ;
 ; Zero page locations.
 ;
-JIFFIES= $0000                  ; 4-byte elapsed 1/100 second counter updated by free running 6522 VIA Timer 1 interrupt.
-PUTS_PTR = $0004                ; 2-byte location of the null-terminated string to be transmitted by the puts subroutine.
-ACIA_FIFO_HEAD = $0006          ; 1-byte index of next buffer location to read. Head of ACIA FIFO.
-ACIA_FIFO_TAIL = $0007          ; 1-byte index of next buffer location to write. Tail of ACIA FIFO.
-CMD_BUFFER_PTR = $0008          ; Index pointer of First-In Last-Out (FILO) command buffer.
+        .segment "ZEROPAGE"
+
+JIFFIES:
+        .res 4                  ; 4-byte elapsed 1/100 second counter incremented by 6522 VIA Timer 1 interrupt.
+PUTS_PTR:
+        .res 2                  ; 2-byte location of the null-terminated string to be transmitted by the puts subroutine.
+ACIA_FIFO_HEAD:
+        .res 1                  ; 1-byte index of next buffer location to read. Head of ACIA FIFO.
+ACIA_FIFO_TAIL:
+        .res 1                  ; 1-byte index of next buffer location to write. Tail of ACIA FIFO.
+LINE_BUFFER_PTR:
+        .res 1                  ; 1-byte index pointer of First-In Last-Out (FILO) unser input line buffer.
+
 
 ;
 ; Input ring buffer.
 ;
-ACIA_FIFO = $200                ; Raw bytes received from the 6551 ACIA (up to 255 bytes.)
+        .segment "RING"
+ACIA_FIFO:
+        .res $100               ; Raw bytes received from the 6551 ACIA (up to 255 bytes.)
+
 
 ;
-; Command buffer.
+; Line buffer for user input.
 ;
-CMD_BUFFER = $300               ; Bytes processed from input buffer that form a command string.
-CMD_MAX_LEN = $10               ; The longest command accepted (not including null terminator.
+        .segment "LINE"
+LINE_BUFFER:
+        .res $100               ; Bytes processed from input buffer that form a line of user input.
+        
+LINE_BUFFER_LEN = $10           ; The longest input accepted (not including null terminator.
 
 ;
 ; Start of 16k ROM
@@ -107,7 +121,7 @@ reset:
 
 ; The command buffer pointer is reset to the beginning.
         lda #$00
-        sta CMD_BUFFER_PTR
+        sta LINE_BUFFER_PTR
 
 ; Ready to accept user input.
         cli                     ; Allow interrupts again.
@@ -120,7 +134,7 @@ reset:
 ;
 new_prompt:
         lda #$00
-        sta CMD_BUFFER_PTR
+        sta LINE_BUFFER_PTR
         ldx #<cmd_prompt
         ldy #>cmd_prompt
         jsr puts
@@ -135,9 +149,10 @@ get_cmd:
 @check_ctrl:
         cmp #$20                ; Control characters are anything ordinally lower than ASCII space ($20).
         bcs @printable          ; Space ($20) and above are printable characters.
-        jmp @handle_ctrl        ; Below $20 is subject to further processing.
+        jsr @handle_ctrl        ; Below $20 is subject to further processing.
+        jmp get_cmd             ; The rest can be skipped, because it's not a printable character.
 @printable:
-        jsr push_cmd_buffer     ; Add the character to the current command buffer.
+        jsr line_buffer_append  ; Add the character to the current command buffer.
         bcc @echo               ; If the carry is clear, it was successful. Carry set means buffer full.
         lda #$07                ; Send a bell character as a warning.
 @echo:
@@ -147,8 +162,9 @@ get_cmd:
 ; Take care of bell, backspace, carriage return. ASCII below $20.
 @handle_ctrl:
         cmp #$08                ; Is it backspace?
-        bne @check_cr           ; If not, check the next significant CTRL character.
-        jsr pop_cmd_buffer      ; Handle the backspace by popping the last character off and discarding it.
+        bne @check_cr           ; If not, check the next interesting CTRL character.
+        jsr line_buffer_rubout  ; Handle the backspace by popping the last character off and discarding it.
+        bcs @handle_ctrl_done   ; If the buffer reports empty, skip the rest.
         lda #$08                ; Reload the clobbered backspace character.
         jsr putch               ; Echo it to the terminal to back up one character.
         lda #$20                ; Load a space.
@@ -160,46 +176,50 @@ get_cmd:
         cmp #$0D                ; It it a carriage return?
         bne @ctrl_error         ; If not, there's nothing else to check, so complain.
         lda #$00                ; Load a null terminator.
-        jsr push_cmd_buffer     ; Put it at the end.
+        jsr line_buffer_append  ; Put it at the end.
         bcs @ctrl_error         ; The buffer is full and there's no room for a null terminator.
         jsr parse_cmd           ; Otherwise, successful Carriage Return means command is ready for parseing.
         jmp new_prompt          ; After the command is done, the prompt needs to be shown.
 @ctrl_error:
         lda #$07                ; Bell as error for errors and any characters not handled.
         jsr putch
-        jmp get_cmd
+@handle_ctrl_done:
+        rts
 
 
 ;
-; Handle the command buffer LIFO and return either results or an error message.
+; Handle the line buffer and return either results or an error message.
 ;
 
-; push_cmd_buffer A
+; line_buffer_append A
 ; Append a character to the end.
 ;   Parameters: A - character to be appended.
 ;   Returns: Carry clear if success.
 ;   Registers clobbered: X
-push_cmd_buffer:
-        ldx CMD_BUFFER_PTR
-        cpx #CMD_MAX_LEN        ; If the pointer is greater than the maximum available length:
+line_buffer_append:
+        ldx LINE_BUFFER_PTR
+        cpx #LINE_BUFFER_LEN    ; If the pointer is greater than the maximum available length:
         bcs @push_done          ; The buffer is full, so keep Carry set as an error indicator and skip the rest.
-        sta CMD_BUFFER,X        ; Otherwise, store the character in the buffer.
-        inc CMD_BUFFER_PTR      ; And bump the pointer to the next position.
+        sta LINE_BUFFER,X       ; Otherwise, store the character in the buffer.
+        inc LINE_BUFFER_PTR     ; And bump the pointer to the next position.
 @push_done:
         rts
 
-; pop_cmd_buffer
-; Retrieve last value in buffer and return in A if successful.
+; line_buffer_rubout
+; Remove the last character in the buffer, using carry flag to indicate success.
 ;   Parameters: none.
-;   Returns: Carry clear if success.
+;   Returns: Carry clear if success or set carry if buffer is already empty.
 ;   Registers clobbered: X
-pop_cmd_buffer:
-        ldx CMD_BUFFER_PTR
-        beq @pop_done           ; If the pointer is zero, there's nothing to pop, so skip the rest.
+line_buffer_rubout:
+        ldx LINE_BUFFER_PTR
+        beq @line_buffer_empty  ; If the pointer is zero, there's nothing to pop, so skip the rest.
         dex                     ; Otherwise, decrement the pointer.
-        lda CMD_BUFFER,X        ; Load the value into the accumulator.
-        stx CMD_BUFFER_PTR      ; Update the pointer.
-@pop_done:
+        lda LINE_BUFFER,X       ; Load the value into the accumulator.
+        stx LINE_BUFFER_PTR     ; Update the pointer.
+        clc                     ; Indicate successfully popped character into accumulator.
+        rts
+@line_buffer_empty:
+        sec                     ; Indicate buffer was empty.
         rts
 
 parse_cmd:
@@ -266,6 +286,39 @@ getch:
         rts
 @empty:
         clc                     ; Clear carry bit to signal no data available.
+        rts
+
+
+;
+; Utility functions for character and number conversion.
+;
+; byte2hex
+; Convert an 8-bit value to two ASCII characters representing the hex digit.
+;   Parameters: A contains the byte to convert.
+;   Returns: Low order ASCII char in X, high order in Y.
+;   Clobbers: flags
+byte2hex:
+        pha                     ; Save the original byte value temporariiy.
+        asl                     ; Shift the high nibble down to the lower 4 bits.
+        asl
+        asl
+        asl
+        jsr nibble2hex          ; Convert lower 4 bits to an ASCII character representation.
+        tay                     ; Store converted upper nibble in the Y-reg for return.
+        pla                     ; Get the original byte value.
+        and #$0F                ; Zero out the high nibble.
+        jsr nibble2hex          ; Convert to ASCII character.
+        tax                     ; Store converted lower nibble in the X-reg for return.
+        rts
+
+; nibble2hex
+; Convert a 4-bit value to a single ASCII character representation of the hex digit.
+;   Parameters: A contains the nibble to convert.
+;   Returns: ASCII hex digit in Accumulator.
+;   Clobbers: A, X, flags
+nibble2hex:
+        tax                     ; Use the nibble as an offset pointer.
+        lda hex_digits,X        ; Load the ASCII representation of the nibble value.
         rts
 
 
@@ -340,6 +393,8 @@ cr_lf:
         .byte $0D, $0A, $00
 cmd_prompt:
         .byte "* ", $00         ; Default prompt for command entry.
+hex_digits:
+        .byte "0123456789ABCDEF" ; Look-up table for nibble2hex subroutine.
 
 
 ;
