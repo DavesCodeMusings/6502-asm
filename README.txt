@@ -3,7 +3,7 @@
 TLDR;
 -----
 If you're itching to program in 6502 assembly, edit rom.a65 to your liking,
-then run build.bat to assemble and link, then run.bat to launch the 6502
+first use build.bat to assemble and link, then run.bat to launch the 6502
 emulator with your ROM image.
 
 What is it?
