@@ -390,7 +390,7 @@ isr:
         inc ACIA_FIFO_TAIL      ; Increment pointer to be ready for the next incoming byte.
 @acia_done:
 
-; Check save status register for a possible BRK interrupt.
+; Check saved status register for a possible BRK interrupt.
 
         tsx
         lda $0104,x             ; Saved status register is 3 bytes deeper, because we saved A, X, Y registers.
