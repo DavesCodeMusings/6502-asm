@@ -90,6 +90,10 @@ LINE_BUFFER_PTR:
         .res 1                  ; 1-byte index pointer of First-In Last-Out (FILO) unser input line buffer.
 LINE_BUFFER_MAX:
         .res 1                  ; 1-byte value indicating the maximum length permitted in the input line buffer.
+BRK_PARAM_PTR:
+        .res 2                  ; 2-byte address of where the most recent BRK instruction will return to.
+BRK_PARAM:
+        .res 1                  ; 1-byte value following the BRK instruction.
 
 ;
 ; Input ring buffer.
@@ -355,10 +359,8 @@ nibble2hex:
 ;
 isr:
         pha                     ; Save registers to avoid trashing whatever process got interrupted.
-        txa
-        pha
-        tya
-        pha
+        phx
+        phy
 
 ; Check 6522 for timer 1 interrupt and update jiffies counter.
         bit VIA_IFR
@@ -394,14 +396,22 @@ isr:
         lda $0104,x             ; Saved status register is 3 bytes deeper, because we saved A, X, Y registers.
         and #$10                ; BRK flag is at bit 4 of the saved status register.
         beq @brk_done           ; If it's clear, there was no BRK encountered.
-        nop                     ; TODO: Check byte after BRK and execute subroutines from a jump vector table.
+        lda $0105,x             ; When it's a BRK instruction, the return address (LOW) is here on the stack.
+        sec                     ; Get ready for subtraction.
+        sbc #$01                ; The BRK parameter byte is (one byte) before the return address.
+        sta BRK_PARAM_PTR       ; Save it in zero page for indirect loading later.             
+        lda $0106,x             ; The return address (HIGH) is here on the stack.
+        sbc #$00                ; Subtracting zero seems silly, but it's to account for the carry (borrow) bit.
+        sta BRK_PARAM_PTR+1     ; Now the zero page indirect address is ready for use.
+        ldy #$00                ; Indirect indexed is the way to get the value, but the index (Y) is not needed.
+        lda (BRK_PARAM_PTR),Y   ; Load the value following the BRK using zero page indirect address mode.
+        sta (BRK_PARAM)         ; Save the parameter value for use future use.
+        bne @brk_done           ; Unless it's a $00 for the BRK parameter, just return normally. But for a $00...
         jmp ($FFFE)             ; Restart the system like it just powered on.
 @brk_done:
 
-        pla                     ; Restore saved registers before exiting.
-        tay
-        pla
-        tax
+        ply                     ; Restore saved registers before exiting.
+        plx
         pla
         rti
 
