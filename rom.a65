@@ -24,7 +24,7 @@ VIA_ACR     = VIA_BASE + $0B    ; Auxiliary Control Register (ACR)
 VIA_IFR     = VIA_BASE + $0D    ; Interrupt Flag Register (IFR). Read or clear interrupt flags.
 VIA_IER     = VIA_BASE + $0E    ; Interrupt Enable Register (IER). Mask to enable / disable different interrupt triggers.
 
-VIA_T1_PERIOD = 9998            ; 1 mS - 2 uS on a 1MHz system. Interval time is (period + 1) / clock_freq.
+VIA_T1_PERIOD = 9998            ; Interval time is (t1_period + 2) / clock_freq.
 
 ;
 ; 6551 Asynchronous Communications Interface Adapter (ACIA) hardware.
