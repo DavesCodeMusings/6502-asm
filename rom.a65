@@ -118,10 +118,10 @@ reset:
 
 ; The line buffer pointer is reset to the beginning and the max input length is set.
         stz LINE_BUFFER_PTR
-        lda #78                 ; Keep it short. Backspacing doesn't do well input wraps to the next line.
+        lda #78                 ; Keep it short. Backspacing doesn't do well when input wraps to the next line.
         sta LINE_BUFFER_MAX
 
-; Ready to accept user input.
+; The system is ready to accept user input.
         cli                     ; Allow interrupts again.
         ldx #<ready_msg         ; Output a message to tell the user the system is ready for input.
         ldy #>ready_msg
