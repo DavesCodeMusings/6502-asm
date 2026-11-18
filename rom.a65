@@ -30,11 +30,17 @@ VIA_T1_PERIOD = 9998            ; Interval time is (t1_period + 2) / clock_freq.
 ; 6551 Asynchronous Communications Interface Adapter (ACIA) hardware.
 ; https://6502.org/documents/datasheets/mos/mos_6551_acia.pdf
 ;
-ACIA_BASE   = $8800             ; Two register select pins are memory mapped from here, giving four possible addresses.
-ACIA_DATA   = ACIA_BASE         ; RS1 = 0, RS0 = 0
-ACIA_STATUS = ACIA_BASE + 1     ; RS1 = 0, RS0 = 1
-ACIA_CMD    = ACIA_BASE + 2     ; RS1 = 1, RS0 = 0
-ACIA_CTRL   = ACIA_BASE + 3     ; RS1 = 1, RS0 = 1
+        .segment "ACIA"
+
+; Two register select pins are memory mapped, giving four possible addresses.
+ACIA_DATA:
+            .res 1
+ACIA_STATUS:
+            .res 1
+ACIA_CMD:
+            .res 1
+ACIA_CTRL:
+            .res 1
 
 ACIA_TDRE   = $10               ; Transmit Data Register Empty (TDRE) bit mask
 ACIA_RDRF   = $80               ; Receive Data Register Full (RDRF) bit mask
