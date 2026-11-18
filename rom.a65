@@ -13,18 +13,45 @@
 ; 6522 Versatile Interface Adapter (VIA)
 ; https://6502.org/documents/datasheets/mos/mos_6522_preliminary_nov_1977.pdf
 ;
-VIA_BASE    = $8000             ; Four register select pins are memory mapped from here, giving sixteen possible addresses.
-VIA_ORB     = VIA_BASE          ; Output Register B (ORB)
-VIA_ORA     = VIA_BASE + 1      ; Output Register A (ORA)
-VIA_DDRB    = VIA_BASE + 2      ; Data Direction Register B (DDRB)
-VIA_DDRA    = VIA_BASE + 3      ; Data Direction Register A (DDRA)
-VIA_T1C_L   = VIA_BASE + 4      ; Timer 1 Count LOW (T1L-L). Low-order byte of initial 16-bit counter value written here.
-VIA_T1C_H   = VIA_BASE + 5      ; Timer 1 Count HIGH (T1L-H). High-order byte of initial 16-bit counter. Writing starts timer.
-VIA_ACR     = VIA_BASE + $0B    ; Auxiliary Control Register (ACR)
-VIA_IFR     = VIA_BASE + $0D    ; Interrupt Flag Register (IFR). Read or clear interrupt flags.
-VIA_IER     = VIA_BASE + $0E    ; Interrupt Enable Register (IER). Mask to enable / disable different interrupt triggers.
+
+        .segment "VIA"
+
+; Four register select pins are memory mapped, giving sixteen possible addresses.
+VIA_ORB:
+            .res 1              ; Output Register B (ORB)
+VIA_ORA:
+            .res 1              ; Output Register A (ORA)
+VIA_DDRB:
+            .res 1              ; Data Direction Register B (DDRB)
+VIA_DDRA:
+            .res 1              ; Data Direction Register A (DDRA)
+VIA_T1C_L:
+            .res 1              ; Timer 1 Count LOW (T1C-L) - Low-order byte of initial 16-bit counter value written here.
+VIA_T1C_H:
+            .res 1              ; Timer 1 Count HIGH (T1L-H) - High-order byte of initial 16-bit counter. Writing starts timer.
+VIA_T1L_L:
+            .res 1              ; Timer 1 Latch LOW (T1L-L)
+VIA_T1L_H:
+            .res 1              ; Timer 1 Latch HIGH (T1L-H)
+VIA_T2C_L:
+            .res 1              ; Timer 2 Count LOW (T2C-L)
+VIA_T2C_H:
+            .res 1              ; Timer 2 Count HIGH (T2C-H)
+VIA_SR:
+            .res 1              ; Shift register (SR)
+VIA_ACR:
+            .res 1              ; Auxiliary Control Register (ACR)
+VIA_PCR:
+            .res 1              ; Peripheral Control Register (PCR)
+VIA_IFR:
+            .res 1              ; Interrupt Flag Register (IFR) - Read or clear interrupt flags.
+VIA_IER:
+            .res 1              ; Interrupt Enable Register (IER) - Mask to enable / disable different interrupt triggers.
+VIA_ORA_NO_HS:
+            .res 1              ; Output Register A (ORA) - Like ORA, but does not affect handshake lines when accessed.
 
 VIA_T1_PERIOD = 9998            ; Interval time is (t1_period + 2) / clock_freq.
+
 
 ;
 ; 6551 Asynchronous Communications Interface Adapter (ACIA) hardware.
